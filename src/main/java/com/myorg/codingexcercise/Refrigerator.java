@@ -1,6 +1,8 @@
 package com.myorg.codingexcercise;
 
+import java.lang.ref.Reference;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -20,7 +22,7 @@ import java.util.TreeMap;
  *
  * Created by kamoorr on 7/14/17.
  */
-public class Refrigerator {
+public class Refrigerator implements Cloneable {
 
     /**
      * Refrigerator Total Cubic Feet (CuFt)
@@ -48,6 +50,8 @@ public class Refrigerator {
     private Map<String, Shelf> itemsToShelfMap;
     private Map<Integer,List<Shelf>> shelfSizeToShelfMap;
     private int shelfIDGenerator =1;
+    
+    private Item lastReshuffledItem =null;
 
     /**
      *
@@ -104,6 +108,7 @@ public class Refrigerator {
     	//if not try rearranging the shelfs
     	//else return false
     	 boolean shelfFound = false;
+    	 Refrigerator cloneRefrigerator = null;
     	
     	if(item.getCubicFt() <=0 || (this.cubicFt - this.getUsedSpace())< item.getCubicFt() )
     	return false;
@@ -120,13 +125,12 @@ public class Refrigerator {
     				System.out.println("current shelf to be put in is "+shelf.getShelfId() + " Capacity: "+shelf.getSizeInCuFt() + " sapce acuupied :"+ shelf.getCurntUtlizn() );
     				
     				//if current shelf has space then add the item to shelf
-    				if (shelf.getSizeInCuFt() -shelf.getCurntUtlizn() >= item.getCubicFt())
-    				{
-    					shelf.addItem(item);
+    					if(shelf.addItem(item)){
+    						System.out.println("Put: item added to shelf: "+shelf.getShelfId()+ " itemId = "+item.getItemId());	
     					this.itemsToShelfMap.put(item.getItemId(),shelf);
     					shelfFound = true;
         				break;
-    				}
+    					}
     				
     			}
     			
@@ -135,7 +139,23 @@ public class Refrigerator {
     			break;
     	}
     	//if item was not added then try reshuffling
-    	reshuffle(item);
+    	if(!shelfFound)
+    	{
+    		try {
+    			cloneRefrigerator = (Refrigerator) this.clone();
+				shelfFound = reshuffle(item,cloneRefrigerator);
+				if(shelfFound){
+		    		this.itemsToShelfMap = cloneRefrigerator.itemsToShelfMap;
+		    		this.shelfSizeToShelfMap = cloneRefrigerator.shelfSizeToShelfMap;
+		    	}
+			} catch (CloneNotSupportedException e) {
+				// TODO Auto-generated catch block
+				e.printStackTrace();
+			}
+    	}
+    	if(!shelfFound){
+    		System.out.println("Put: Item was not added: "+item.getItemId());
+    	}
     	
     	return shelfFound;
     }
@@ -232,13 +252,181 @@ public class Refrigerator {
 	return shelfSizeToShelfMap;
   }
    
-   private void reshuffle(Item item)
+   private boolean reshuffle(Item item,Refrigerator cloneRefrigerator) throws CloneNotSupportedException
    {
 	   //based on item size get the Shelfs
 	   //in each shelf check what item can be removed and current be added such that it increases max space utilization for that shelf
 	   //keep list of all removed (get) items and try putting them (put(item)) into the shelf until each finds a shelf.
 	   // if there is any item that can't be placed then return fails else true.
 	   //this will be iterative.
+	   
+	   List<Item> lstUtlzdShelfItems = null;
+	   boolean shelfFound =false;
+	   cloneRefrigerator.lastReshuffledItem = item;
+	   
+	   
+	  for(Integer shelfSize : cloneRefrigerator.shelfSizeToShelfMap.keySet())
+   		{
+		  if(item.getCubicFt() <= shelfSize)
+		  {
+			 List<Shelf> shlefList = cloneRefrigerator.shelfSizeToShelfMap.get(shelfSize);
+			 for(Shelf shelf:shlefList )
+			 {
+				lstUtlzdShelfItems =  findLeastUtilizedItems(shelf,item);
+				 if (lstUtlzdShelfItems != null && !lstUtlzdShelfItems.isEmpty()  )
+				 {
+					 shelfFound = true;
+					 break;
+				 }
+			 }
+		  }
+		  if(shelfFound)
+			  break;
+   		}
+	  if(lstUtlzdShelfItems != null && !lstUtlzdShelfItems.isEmpty())
+	  {
+		  for(Item removedItem:lstUtlzdShelfItems)
+		  {
+			  shelfFound =  cloneRefrigerator.replace(removedItem,cloneRefrigerator);
+		  }
+	  }
+	 return shelfFound;  
+   }
+   private List<Item> findLeastUtilizedItems(Shelf shelf, Item itemToAdd)
+   {
+	   List<Item> removedItemList = new ArrayList<Item>();
+	   int removedItemsTotalCuFt = 0;
+	   //if shelf is already full
+	   if(shelf.getCurntUtlizn() == shelf.getSizeInCuFt())
+	   {
+		   return null;
+	   } else 
+	   {
+		 
+		 List<Item> list = new ArrayList<Item>(shelf.getShelfContainer().values()); 
+		 Collections.sort(list);
+		 for(Item shelfItem:list )
+		 {
+			
+			 if(itemToAdd.getCubicFt() > shelfItem.getCubicFt()  && removedItemsTotalCuFt < itemToAdd.getCubicFt()) {
+					Item removedItem =  shelf.getItem(shelfItem.getItemId());
+					removedItemList.add(removedItem);
+					removedItemsTotalCuFt +=removedItem.getCubicFt();
+					if(shelf.addItem(itemToAdd) )
+					{
+					 	break;
+					}	
+			 }
+			 else
+			 {
+				 break;
+			 }
+				 
+		 }
+		 
+		 if(!removedItemList.isEmpty())
+		 {
+		
+			 Collections.sort(removedItemList, Collections.reverseOrder());
+			 if(shelf.getCurntUtlizn() < shelf.getSizeInCuFt())
+			 {
+				for(Item item:removedItemList) 
+				{
+					if(shelf.addItem(item))
+					{
+						removedItemList.remove(item);
+					}
+					else
+						break;
+				}
+			 }
+		 }
+		 
+		   
+		   return removedItemList;
+	   }
+	   
+   }
+   
+   private boolean replace(Item removedItem, Refrigerator cloneRefrigerator)
+   {
+	   boolean shelfFound = false;
+	   
+	   if(cloneRefrigerator.lastReshuffledItem.getItemId().equals(removedItem.getItemId()))
+		   return shelfFound;
+   	
+   	if(removedItem.getCubicFt() <=0 || (cloneRefrigerator.cubicFt - cloneRefrigerator.getUsedSpace())< removedItem.getCubicFt() )
+   	return false;
+   	
+   	for(Integer shelfSize : cloneRefrigerator.shelfSizeToShelfMap.keySet())
+   	{
+   		//get eligible size shelfs
+   		if(removedItem.getCubicFt() <= shelfSize)
+   		{
+   			List<Shelf> shelfList = cloneRefrigerator.shelfSizeToShelfMap.get(shelfSize);
+   			
+   			for(Shelf shelf : shelfList)
+   			{
+   				
+   				//if current shelf has space then add the item to shelf
+   					if(shelf.addItem(removedItem)){
+   						System.out.println("Replace: removedItem added to shelf: "+shelf.getShelfId()+ " removedItem = "+removedItem.getItemId());	
+   						cloneRefrigerator.itemsToShelfMap.put(removedItem.getItemId(),shelf);
+   					shelfFound = true;
+       				break;
+   					}
+   				
+   			}
+   			
+   		}
+   		if(shelfFound)
+   			break;
+   	}
+   	//if item was not added then try reshuffling
+   	if(!shelfFound)
+   	{
+   		try {
+				shelfFound = reshuffle(removedItem,cloneRefrigerator);
+			} catch (CloneNotSupportedException e) {
+				// TODO Auto-generated catch block
+				e.printStackTrace();
+			}
+   	}
+   	if(!shelfFound){
+   		System.out.println("Replace: Item was not added: "+removedItem.getItemId());
+   	}
+   	return shelfFound;
+   }
+   
+   public Refrigerator clone()
+   {
+	   try {
+            Refrigerator refClone =  (Refrigerator) super.clone();
+            refClone.itemsToShelfMap = new HashMap<String, Shelf>();
+            for(String str :this.itemsToShelfMap.keySet())
+            {
+                Shelf cloneShelf = this.itemsToShelfMap.get(str).clone();
+            	refClone.itemsToShelfMap.put(str,cloneShelf);
+            }
+            //(Map<String, Shelf>)((HashMap<String, Shelf>)this.itemsToShelfMap).clone();
+            refClone.shelfSizeToShelfMap = new TreeMap<Integer,List<Shelf>>();
+            for(Integer shelfSize :this.shelfSizeToShelfMap.keySet())
+            {
+                List<Shelf> cloneList = new ArrayList<Shelf>();
+                List<Shelf> list = this.shelfSizeToShelfMap.get(shelfSize);
+                for(Shelf shelf: list)
+                {
+            	Shelf cloneShelf = shelf.clone();
+            	cloneList.add(cloneShelf);
+                }
+                refClone.shelfSizeToShelfMap.put(shelfSize,cloneList);
+            }
+            
+		  return refClone;
+       } catch (CloneNotSupportedException e) {
+           e.printStackTrace();
+           throw new RuntimeException();
+       }
    }
 
 }
